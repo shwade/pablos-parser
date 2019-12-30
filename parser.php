@@ -41,63 +41,79 @@ for ($offset = 0; $offset < 1000; $offset += 100) {
         }
     }
 }
-echo json_encode($stats);
+
+gatherAverages($stats);
+
+echo json_encode($stats, JSON_UNESCAPED_UNICODE);
 
 function calculate(&$res, $path, $post)
 {
     //считаем суммарные штуки
-    $res['totals']['comments_count'] = isset($res['totals']['comments_count']) ?
-        $res['totals']['comments_count'] + $post['comments']['count'] :
-        $post['comments']['count'];
+    $res['totals']['comments_count'] = (int)$res['totals']['comments_count'] + $post['comments']['count'];
 
-    $res['totals']['likes_count'] = isset($res['totals']['likes_count']) ?
-        $res['totals']['likes_count'] + $post['likes']['count'] :
-        $post['likes']['count'];
+    $res['totals']['likes_count'] = (int)$res['totals']['likes_count'] + $post['likes']['count'];
 
-    $res['totals']['reposts_count'] = isset($res['totals']['reposts_count']) ?
-        $res['totals']['reposts_count'] + $post['reposts']['count'] :
-        $post['reposts']['count'];
+    $res['totals']['reposts_count'] = (int)$res['totals']['reposts_count'] + $post['reposts']['count'];
 
-    $res['totals']['views_count'] = isset($res['totals']['views_count']) ?
-        $res['totals']['views_count'] + $post['views']['count'] :
-        $post['views']['count'];
+    $res['totals']['views_count'] = (int)$res['totals']['views_count'] + $post['views']['count'];
 
-    $res['totals']['posts_count'] = $res['totals']['posts_count'] ? $res['totals']['posts_count']++ : 1;
+    $res['totals']['count']++;
 
     $text = $post['text'];
 
-    //оценки
-    $res[$path]['count']++;
+    $headerEnd = stripos($text, '/1') + 5;
+    $header = substr($text, 0, $headerEnd);
+
+    $parts = explode('|', $header);
     $mark = [];
-    preg_match('/\d\/\d/', $text, $mark);
-    $mark = explode('/', $mark[0])[0];
-    $res[$path]['total_mark'] = isset($res[$path]['total_mark']) ? $res[$path]['total_mark'] + $mark : $mark;
-    $res['totals']['total_mark'] = isset($res['totals']['total_mark']) ? $res['totals']['total_mark'] + $mark : $mark;
-
-    //продолжительность
-    if ($path !== '#жкниги') {
-        $duration = (int)preg_replace('/[^\d]/', '', explode('|', $text)[2]);
-        $res[$path]['duration'] = isset($res[$path]['duration']) ? $res[$path]['duration'] + $duration : $duration;
-        $res['totals']['duration'] = isset($res['totals']['duration']) ? $res['totals']['duration'] + $duration : $duration;
+    foreach ($parts as $part) {
+        preg_match('/\d\/\d/', $part, $mark);
+        if (stripos($part, 'мин.') !== false) {
+            //продолжительность
+            $duration = (int)preg_replace('/[^\d]/', '', $part);
+            $res[$path]['duration'] = (int)$res[$path]['duration'] + $duration;
+            $res['totals']['duration'] = (int)$res['totals']['duration'] + $duration;
+        } elseif (!empty($mark)) {
+            //оценки
+            $res[$path]['count']++;
+            $mark = explode('/', $mark[0])[0];
+            $res[$path]['total_mark'] = (int)$res[$path]['total_mark'] + $mark;
+            $res['totals']['total_mark'] = (int)$res['totals']['total_mark'] + $mark;
+            $highMark  = $mark > 7 ? true : false;
+            $mark = [];
+        } elseif ($year = (int)preg_replace('/[^\d]/', '', $part)) {
+            if ($year == '2019') {
+                $res[$path]['current_year']++;
+            }
+        }
     }
 
-    //текущий ли год
-    $year = $duration = (int)preg_replace('/[^\d]/', '', explode('|', $text)[1]);
-    if ($year == '2019') {
-        $res[$path]['current_year'] = isset($res[$path]['current_year']) ? (int)$res[$path]['current_year']++ : 1;
-    }
 
-    if (stripos($text, '#балтикавосьмерка') !== false || stripos($text, '#балтикавосьмёрка') !== false) {
-        $res[$path]['high_mark'] = isset($res[$path]['high_mark']) ? (int)$res[$path]['high_mark']++ : 1;
+    if (stripos($text, '#балтикавосьмерка') !== false
+        || stripos($text, '#балтикавосьмёрка') !== false
+        || $highMark
+    ) {
+        $res[$path]['high_mark']++;
         $text = str_replace('#балтикавосьмерка', '', $text);
         $text = str_replace('#балтикавосьмерка', '', $text);
     }
 
     //длина поста
-    $headerEnd = stripos($text, '/1') + 5;
-    $textTrimmed = str_replace($path, '', substr($text, $headerEnd));
+    $textTrimmed = str_replace($path, '', $text);
+    $textTrimmed = str_replace($header, '', $textTrimmed);
     $length = strlen($textTrimmed);
-    $res[$path]['length'] = isset($res[$path]['length']) ? (int)$res[$path]['length'] + $length : $length;
-    $res['totals']['length'] = isset($res['totals']['length']) ? (int)$res['totals']['length'] + $length : $length;
+    $res[$path]['length'] = (int)$res[$path]['length'] + $length;
+    $res['totals']['length'] = (int)$res['totals']['length'] + $length;
+}
+
+function gatherAverages(&$stats)
+{
+    foreach ($stats as $type => &$stat) {
+        if ($type !== 'misc') {
+            $stat['average_mark'] = $stat['total_mark'] / $stat['count'];
+            $stat['average_duration'] = $stat['duration'] / $stat['count'];
+            $stat['average_length'] = $stat['length'] / $stat['count'];
+        }
+    }
 
 }
